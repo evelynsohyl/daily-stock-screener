@@ -306,7 +306,11 @@ def get_news_sentiment(ticker_obj):
         neg_count = 0
         pos_count = 0
         for item in news[:5]:
-            title = item.get('title', '')
+            # yfinance new structure: title nested under item['content']['title']
+            content = item.get('content', {})
+            title = (content.get('title', '') if isinstance(content, dict) else '') or item.get('title', '')
+            if not title:
+                continue
             headlines.append(title)
             title_lower = title.lower()
             if any(w in title_lower for w in neg_words):
