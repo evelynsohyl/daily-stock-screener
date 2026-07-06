@@ -11,6 +11,7 @@ import matplotlib.dates as mdates
 from io import BytesIO
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
 from datetime import datetime, date, timedelta
 from collections import Counter
 import time
@@ -622,7 +623,8 @@ def build_html(flagged, date_str, market_colour, portfolio_pnl, wl_history):
                            str(s['graham']) + ' | Margin of safety: ' + str(round(mos, 1)) + '%</div>')
         chart_img = ''
         if s['chart']:
-            chart_img = '<img src="data:image/png;base64,' + s['chart'] + '" style="width:200px;height:75px;margin-top:6px;border-radius:4px">'
+            cid = 'chart_' + s['ticker'].replace('.', '_').replace('-', '_')
+            chart_img = '<img src="cid:' + cid + '" style="width:200px;height:75px;margin-top:6px;border-radius:4px">'
         passed_html = ''.join(['<span style="color:#2e7d32;font-size:11px;display:block">+ ' + p + '</span>' for p in s['passed']])
         failed_html = ''.join(['<span style="color:#bbb;font-size:11px;display:block">- ' + f + '</span>' for f in s['failed']])
         green_html  = ''.join(['<span style="color:#2e7d32;font-size:11px;display:block">&#10003; ' + g + '</span>' for g in s['green']])
@@ -735,16 +737,31 @@ def build_html(flagged, date_str, market_colour, portfolio_pnl, wl_history):
 # ================================================================
 # SEND EMAIL
 # ================================================================
-def send_email(html, date_str, buy_count):
-    msg = MIMEMultipart('alternative')
-    msg['Subject'] = 'Stock Screener - ' + str(buy_count) + ' BUY signals - ' + date_str
-    msg['From']    = SENDER_EMAIL
-    msg['To']      = RECIPIENT_EMAIL
-    msg.attach(MIMEText(html, 'html'))
+def send_email(html, date_str, buy_count, flagged):
+    # Use multipart/related so inline images (cid:) are supported by Gmail
+    msg_outer = MIMEMultipart('mixed')
+    msg_outer['Subject'] = 'Stock Screener - ' + str(buy_count) + ' BUY signals - ' + date_str
+    msg_outer['From']    = SENDER_EMAIL
+    msg_outer['To']      = RECIPIENT_EMAIL
+
+    msg_related = MIMEMultipart('related')
+    msg_related.attach(MIMEText(html, 'html'))
+
+    # Attach each chart as an inline image with Content-ID
+    for s in flagged:
+        if s.get('chart'):
+            img_data = base64.b64decode(s['chart'])
+            img = MIMEImage(img_data, 'png')
+            cid = 'chart_' + s['ticker'].replace('.', '_').replace('-', '_')
+            img.add_header('Content-ID', '<' + cid + '>')
+            img.add_header('Content-Disposition', 'inline', filename=cid + '.png')
+            msg_related.attach(img)
+
+    msg_outer.attach(msg_related)
     try:
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as s:
             s.login(SENDER_EMAIL, SENDER_APP_PASSWORD)
-            s.sendmail(SENDER_EMAIL, RECIPIENT_EMAIL, msg.as_string())
+            s.sendmail(SENDER_EMAIL, RECIPIENT_EMAIL, msg_outer.as_string())
         print('Email sent!')
     except Exception as e:
         print('Email error: ' + str(e))
@@ -780,4 +797,4 @@ if __name__ == '__main__':
     print('Total flagged: ' + str(len(flagged)) + ' | BUY: ' + str(buy_count))
 
     html = build_html(flagged, date_str, market_colour, portfolio_pnl, wl_history)
-    send_email(html, date_str, buy_count)
+    send_email(html, date_str, buy_count, flagged)
