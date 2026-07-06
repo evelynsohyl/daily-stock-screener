@@ -4,41 +4,21 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime, date
 import time
+import warnings
+warnings.filterwarnings('ignore')
 
-# Market holidays (US, HK, SG combined) - dates when all markets are closed
-# Update this list each year
+# -- Market holidays (US, HK, SG) - skip on these days ----------
 MARKET_HOLIDAYS = [
-    # 2025
-    date(2025, 1, 1),   # New Year's Day
-    date(2025, 1, 29),  # Lunar New Year (HK/SG)
-    date(2025, 1, 30),  # Lunar New Year (HK/SG)
-    date(2025, 4, 18),  # Good Friday
-    date(2025, 4, 21),  # Easter Monday
-    date(2025, 5, 1),   # Labour Day (HK/SG)
-    date(2025, 5, 26),  # Memorial Day (US)
-    date(2025, 6, 19),  # Juneteenth (US)
-    date(2025, 7, 4),   # Independence Day (US)
-    date(2025, 9, 1),   # Labor Day (US)
-    date(2025, 10, 1),  # National Day (HK)
-    date(2025, 11, 27), # Thanksgiving (US)
-    date(2025, 12, 25), # Christmas
-    date(2025, 12, 26), # Boxing Day (HK/SG)
-    # 2026
-    date(2026, 1, 1),   # New Year's Day
-    date(2026, 2, 17),  # Lunar New Year (HK/SG)
-    date(2026, 2, 18),  # Lunar New Year (HK/SG)
-    date(2026, 2, 19),  # Lunar New Year (HK/SG)
-    date(2026, 4, 3),   # Good Friday
-    date(2026, 4, 6),   # Easter Monday
-    date(2026, 5, 1),   # Labour Day (HK/SG)
-    date(2026, 5, 25),  # Memorial Day (US)
-    date(2026, 6, 19),  # Juneteenth (US)
-    date(2026, 7, 3),   # Independence Day observed (US)
-    date(2026, 9, 7),   # Labor Day (US)
-    date(2026, 10, 1),  # National Day (HK)
-    date(2026, 11, 26), # Thanksgiving (US)
-    date(2026, 12, 25), # Christmas
-    date(2026, 12, 26), # Boxing Day (HK/SG)
+    date(2025, 1, 1),   date(2025, 1, 29),  date(2025, 1, 30),
+    date(2025, 4, 18),  date(2025, 4, 21),  date(2025, 5, 1),
+    date(2025, 5, 26),  date(2025, 6, 19),  date(2025, 7, 4),
+    date(2025, 9, 1),   date(2025, 10, 1),  date(2025, 11, 27),
+    date(2025, 12, 25), date(2025, 12, 26),
+    date(2026, 1, 1),   date(2026, 2, 17),  date(2026, 2, 18),
+    date(2026, 2, 19),  date(2026, 4, 3),   date(2026, 4, 6),
+    date(2026, 5, 1),   date(2026, 5, 25),  date(2026, 6, 19),
+    date(2026, 7, 3),   date(2026, 9, 7),   date(2026, 10, 1),
+    date(2026, 11, 26), date(2026, 12, 25), date(2026, 12, 26),
 ]
 
 def is_market_holiday():
@@ -48,11 +28,13 @@ def is_market_holiday():
         return True
     return False
 
-SENDER_EMAIL = 'evelynsohyl@gmail.com'
+# -- Configuration -----------------------------------------------
+SENDER_EMAIL        = 'evelynsohyl@gmail.com'
 SENDER_APP_PASSWORD = 'sjef izzp kvbk htay'
-RECIPIENT_EMAIL = 'evelynsohyl@gmail.com'
-MIN_SCORE = 5
+RECIPIENT_EMAIL     = 'evelynsohyl@gmail.com'
+MIN_SCORE           = 5
 
+# -- Screening Criteria ------------------------------------------
 CRITERIA_US = {
     'pe_ratio':        {'threshold': 25,   'direction': 'below', 'label': 'P/E < 25'},
     'pb_ratio':        {'threshold': 3.0,  'direction': 'below', 'label': 'P/B < 3.0'},
@@ -62,7 +44,6 @@ CRITERIA_US = {
     'current_ratio':   {'threshold': 1.5,  'direction': 'above', 'label': 'Current Ratio > 1.5'},
     'roe':             {'threshold': 15.0, 'direction': 'above', 'label': 'ROE > 15%'},
 }
-
 CRITERIA_HKSG = {
     'pe_ratio':        {'threshold': 15,   'direction': 'below', 'label': 'P/E < 15'},
     'pb_ratio':        {'threshold': 1.5,  'direction': 'below', 'label': 'P/B < 1.5'},
@@ -73,6 +54,7 @@ CRITERIA_HKSG = {
     'roe':             {'threshold': 12.0, 'direction': 'above', 'label': 'ROE > 12%'},
 }
 
+# -- Stock Universe ----------------------------------------------
 US_STOCKS = [
     'AAPL','MSFT','GOOGL','AMZN','NVDA','META','TSLA','BRK-B','JPM','V',
     'UNH','XOM','JNJ','WMT','MA','PG','HD','CVX','MRK','ABBV',
@@ -85,7 +67,6 @@ US_STOCKS = [
     'LMT','NOC','F','GM','TGT','LOW','NKE','SBUX','GE','MMM',
     'MU','LRCX','KLAC','AMAT','ADI','MCHP','ON','STX','WDC','HPQ',
 ]
-
 HK_STOCKS = [
     '0700.HK','0941.HK','9988.HK','1299.HK','0005.HK','0939.HK','1398.HK','3988.HK',
     '2318.HK','0388.HK','0002.HK','0003.HK','0006.HK','0016.HK','0017.HK','0019.HK',
@@ -94,7 +75,6 @@ HK_STOCKS = [
     '0868.HK','0883.HK','0960.HK','0992.HK','1038.HK','1044.HK','1093.HK','1109.HK',
     '1113.HK','1177.HK','1211.HK','1378.HK','1810.HK','1876.HK','2020.HK','2269.HK','2382.HK',
 ]
-
 SG_STOCKS = [
     'D05.SI','O39.SI','U11.SI','Z74.SI','C6L.SI','S68.SI','F34.SI','BN4.SI','G13.SI',
     'C38U.SI','A17U.SI','ME8U.SI','N2IU.SI','J36.SI','S63.SI','V03.SI','BS6.SI','H78.SI',
@@ -102,10 +82,11 @@ SG_STOCKS = [
     'BVA.SI','P40U.SI','AJBU.SI',
 ]
 
-
+# -- Fetch stock data --------------------------------------------
 def fetch_stock(ticker):
     try:
-        info = yf.Ticker(ticker).info
+        t    = yf.Ticker(ticker)
+        info = t.info
         if not info or info.get('quoteType') is None:
             return None
         dy = info.get('dividendYield')
@@ -121,12 +102,22 @@ def fetch_stock(ticker):
             'earnings_growth': (eg * 100) if eg else None,
             'current_ratio':   info.get('currentRatio'),
             'roe':             (info.get('returnOnEquity') or 0) * 100,
+            'analyst_rating':  info.get('recommendationKey', ''),
+            'target_price':    info.get('targetMeanPrice'),
+            'current_price':   info.get('currentPrice') or info.get('regularMarketPrice'),
+            'revenue_growth':  (info.get('revenueGrowth') or 0) * 100,
+            'profit_margins':  (info.get('profitMargins') or 0) * 100,
+            'insider_pct':     (info.get('heldPercentInsiders') or 0) * 100,
+            'short_ratio':     info.get('shortRatio'),
+            'beta':            info.get('beta'),
+            'info':            info,
+            'ticker_obj':      t,
         }
     except Exception as e:
         print('Error ' + ticker + ': ' + str(e))
         return None
 
-
+# -- Score stock -------------------------------------------------
 def score_stock(stock, criteria):
     if not stock:
         return 0, [], []
@@ -145,7 +136,122 @@ def score_stock(stock, criteria):
             failed.append(cfg['label'] + ' (' + str(round(val, 1)) + ')')
     return score, passed, failed
 
+# -- Price trend check (50-day vs 200-day MA) --------------------
+def get_trend(ticker_obj):
+    try:
+        hist = ticker_obj.history(period='1y')
+        if hist is None or len(hist) < 50:
+            return 'unknown', 0.0
+        close = hist['Close']
+        ma50  = float(close.tail(50).mean())
+        ma200 = float(close.mean()) if len(close) >= 200 else float(close.mean())
+        current = float(close.iloc[-1])
+        pct_from_52w_low = ((current - float(close.min())) / float(close.min())) * 100
+        if ma50 > ma200:
+            trend = 'uptrend'
+        elif ma50 < ma200 * 0.97:
+            trend = 'downtrend'
+        else:
+            trend = 'sideways'
+        return trend, round(pct_from_52w_low, 1)
+    except:
+        return 'unknown', 0.0
 
+# -- Sanity checks -----------------------------------------------
+def sanity_checks(stock):
+    """
+    Run additional checks beyond the 7 criteria.
+    Returns a list of green flags, red flags, and a recommendation.
+    """
+    green = []
+    red   = []
+
+    # 1. Analyst consensus
+    rating = (stock.get('analyst_rating') or '').lower()
+    if rating in ('buy', 'strong_buy'):
+        green.append('Analysts rate: ' + rating.replace('_', ' ').title())
+    elif rating in ('sell', 'strong_sell', 'underperform'):
+        red.append('Analysts rate: ' + rating.replace('_', ' ').title())
+
+    # 2. Upside to analyst target price
+    current = stock.get('current_price')
+    target  = stock.get('target_price')
+    if current and target and current > 0:
+        upside = (target - current) / current * 100
+        if upside >= 15:
+            green.append('Analyst target upside: +' + str(round(upside, 1)) + '%')
+        elif upside < 0:
+            red.append('Trading above analyst target by ' + str(round(-upside, 1)) + '%')
+
+    # 3. Price trend (50-day vs 200-day MA)
+    trend, pct_52w = get_trend(stock.get('ticker_obj'))
+    if trend == 'uptrend':
+        green.append('Price trend: uptrend (50MA > 200MA)')
+    elif trend == 'downtrend':
+        red.append('Price trend: downtrend (50MA < 200MA)')
+    else:
+        green.append('Price trend: sideways (neutral)')
+
+    # 4. Distance from 52-week low (buying near lows is good for value)
+    if pct_52w <= 20:
+        green.append('Near 52-week low (within 20%) - potential value entry')
+    elif pct_52w >= 80:
+        red.append('Near 52-week high (+' + str(pct_52w) + '% from low) - less margin of safety')
+
+    # 5. Revenue growth
+    rev_growth = stock.get('revenue_growth') or 0
+    if rev_growth >= 5:
+        green.append('Revenue growing: +' + str(round(rev_growth, 1)) + '%')
+    elif rev_growth < -5:
+        red.append('Revenue shrinking: ' + str(round(rev_growth, 1)) + '%')
+
+    # 6. Profit margin
+    margin = stock.get('profit_margins') or 0
+    if margin >= 10:
+        green.append('Healthy profit margin: ' + str(round(margin, 1)) + '%')
+    elif margin < 0:
+        red.append('Negative profit margin: ' + str(round(margin, 1)) + '%')
+
+    # 7. Insider ownership (skin in the game)
+    insider = stock.get('insider_pct') or 0
+    if insider >= 5:
+        green.append('Insider ownership: ' + str(round(insider, 1)) + '% (management invested)')
+
+    # 8. Short interest (high short ratio = market betting against it)
+    short = stock.get('short_ratio') or 0
+    if short >= 10:
+        red.append('High short interest ratio: ' + str(round(short, 1)) + ' days to cover')
+
+    # 9. Beta (volatility risk)
+    beta = stock.get('beta') or 1
+    if beta > 2:
+        red.append('High volatility: beta = ' + str(round(beta, 2)))
+    elif 0.5 <= beta <= 1.5:
+        green.append('Stable volatility: beta = ' + str(round(beta, 2)))
+
+    # -- Final recommendation ------------------------------------
+    green_count = len(green)
+    red_count   = len(red)
+
+    if red_count == 0 and green_count >= 4:
+        recommendation = 'BUY'
+        reason = 'Strong fundamentals, no red flags, multiple positive signals.'
+    elif red_count >= 3:
+        recommendation = 'AVOID'
+        reason = 'Multiple red flags detected. Wait for conditions to improve.'
+    elif red_count >= 1 and green_count >= red_count:
+        recommendation = 'WAIT'
+        reason = 'Some concerns present. Monitor and wait for a better entry.'
+    elif red_count == 0 and green_count >= 2:
+        recommendation = 'BUY'
+        reason = 'Good fundamentals with positive signals.'
+    else:
+        recommendation = 'WAIT'
+        reason = 'Insufficient positive signals to confirm entry.'
+
+    return green, red, recommendation, reason
+
+# -- Screen market -----------------------------------------------
 def screen(tickers, market, criteria):
     print('Scanning ' + market + ' (' + str(len(tickers)) + ' stocks)...')
     results = []
@@ -154,55 +260,91 @@ def screen(tickers, market, criteria):
         stock = fetch_stock(ticker)
         score, passed, failed = score_stock(stock, criteria)
         if score >= MIN_SCORE:
+            green, red, rec, reason = sanity_checks(stock)
             verdict = 'STRONG BUY' if score >= 6 else 'WATCH'
             results.append({
-                'ticker':  ticker,
-                'name':    stock['name'],
-                'market':  market,
-                'sector':  stock['sector'],
-                'score':   score,
-                'verdict': verdict,
-                'passed':  passed,
-                'failed':  failed,
+                'ticker':     ticker,
+                'name':       stock['name'],
+                'market':     market,
+                'sector':     stock['sector'],
+                'score':      score,
+                'verdict':    verdict,
+                'passed':     passed,
+                'failed':     failed,
+                'green':      green,
+                'red':        red,
+                'rec':        rec,
+                'reason':     reason,
+                'price':      stock.get('current_price'),
+                'target':     stock.get('target_price'),
             })
-        time.sleep(0.3)
+            print('    -> ' + rec + ' | green=' + str(len(green)) + ' red=' + str(len(red)))
+        time.sleep(0.4)
     print(market + ' done: ' + str(len(results)) + ' flagged')
     return results
 
+# -- Build email HTML --------------------------------------------
+def build_html(flagged, date_str):
+    buy    = [s for s in flagged if s['rec'] == 'BUY']
+    wait   = [s for s in flagged if s['rec'] == 'WAIT']
+    avoid  = [s for s in flagged if s['rec'] == 'AVOID']
 
-def build_html(flagged, date):
-    strong = [s for s in flagged if s['verdict'] == 'STRONG BUY']
-    watch  = [s for s in flagged if s['verdict'] == 'WATCH']
+    rec_colors = {'BUY': '#1b5e20', 'WAIT': '#e65100', 'AVOID': '#b71c1c'}
+    rec_bg     = {'BUY': '#e8f5e9', 'WAIT': '#fff3e0', 'AVOID': '#ffebee'}
+
+    def price_row(s):
+        if s['price'] and s['target']:
+            upside = (s['target'] - s['price']) / s['price'] * 100
+            return ('Current: ' + str(round(s['price'], 2)) +
+                    ' | Target: ' + str(round(s['target'], 2)) +
+                    ' | Upside: ' + str(round(upside, 1)) + '%')
+        return ''
+
+    def flag_list(items, color):
+        if not items:
+            return '<span style="color:#999">None</span>'
+        return ''.join(['<span style="color:' + color + ';display:block;font-size:12px">' + x + '</span>' for x in items])
 
     def row(s):
-        color = '#b71c1c' if s['verdict'] == 'STRONG BUY' else '#2e7d32'
-        p = '<br>'.join(['+ ' + x for x in s['passed']])
-        f = '<br>'.join(['- ' + x for x in s['failed']])
+        rc = rec_colors[s['rec']]
+        rb = rec_bg[s['rec']]
+        sc_color = '#b71c1c' if s['verdict'] == 'STRONG BUY' else '#2e7d32'
+        passed_str = ''.join(['<span style="color:green;display:block;font-size:11px">+ ' + p + '</span>' for p in s['passed']])
+        failed_str = ''.join(['<span style="color:#bbb;display:block;font-size:11px">- ' + f + '</span>' for f in s['failed']])
+        pr = price_row(s)
         return (
-            '<tr>'
-            '<td style="padding:8px;font-weight:bold;color:' + color + '">' + s['ticker'] + '</td>'
-            '<td style="padding:8px">' + s['name'] + '</td>'
-            '<td style="padding:8px">' + s['market'] + '</td>'
-            '<td style="padding:8px">' + s['sector'] + '</td>'
-            '<td style="padding:8px;text-align:center;font-weight:bold;color:' + color + '">' + str(s['score']) + '/7</td>'
-            '<td style="padding:8px;font-size:12px;color:green">' + p + '</td>'
-            '<td style="padding:8px;font-size:12px;color:#999">' + f + '</td>'
+            '<tr style="background:' + rb + ';border-bottom:1px solid #eee">'
+            '<td style="padding:10px;font-weight:bold;font-size:14px">'
+            + s['ticker'] + '<br><span style="font-size:11px;font-weight:normal;color:#555">' + s['market'] + ' | ' + s['sector'] + '</span>'
+            + ('<br><span style="font-size:11px;color:#777">' + pr + '</span>' if pr else '') +
+            '</td>'
+            '<td style="padding:10px;font-size:12px;color:#333">' + s['name'] + '</td>'
+            '<td style="padding:10px;text-align:center;font-weight:bold;color:' + sc_color + '">' + str(s['score']) + '/7</td>'
+            '<td style="padding:10px">' + passed_str + failed_str + '</td>'
+            '<td style="padding:10px">'
+            + flag_list(s['green'], '#2e7d32') +
+            flag_list(s['red'],   '#c62828') +
+            '</td>'
+            '<td style="padding:12px;text-align:center">'
+            '<span style="background:' + rc + ';color:white;padding:6px 14px;border-radius:20px;font-weight:bold;font-size:13px">'
+            + s['rec'] + '</span>'
+            '<br><span style="font-size:11px;color:#555;display:block;margin-top:4px">' + s['reason'] + '</span>'
+            '</td>'
             '</tr>'
         )
 
-    def table(stocks, color):
+    def section(stocks, title, color):
         if not stocks:
-            return '<p style="color:#999">None today.</p>'
+            return '<p style="color:#999;margin-left:8px">None today.</p>'
         header = (
-            '<table style="width:100%;border-collapse:collapse;font-size:13px">'
+            '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px">'
             '<tr style="background:' + color + ';color:white">'
-            '<th style="padding:8px">Ticker</th>'
-            '<th style="padding:8px">Name</th>'
-            '<th style="padding:8px">Market</th>'
-            '<th style="padding:8px">Sector</th>'
-            '<th style="padding:8px">Score</th>'
-            '<th style="padding:8px">Passed</th>'
-            '<th style="padding:8px">Failed</th>'
+            '<th style="padding:10px;text-align:left">Ticker</th>'
+            '<th style="padding:10px;text-align:left">Name</th>'
+            '<th style="padding:10px">Score</th>'
+            '<th style="padding:10px;text-align:left">Criteria</th>'
+            '<th style="padding:10px;text-align:left">Sanity Checks</th>'
+            '<th style="padding:10px;text-align:center">Recommendation</th>'
             '</tr>'
         )
         return header + ''.join([row(s) for s in stocks]) + '</table>'
@@ -211,31 +353,40 @@ def build_html(flagged, date):
         'Screened ' + str(len(US_STOCKS)) + ' US, ' +
         str(len(HK_STOCKS)) + ' HK, ' +
         str(len(SG_STOCKS)) + ' SG stocks. ' +
-        str(len(flagged)) + ' flagged | Strong Buys: ' + str(len(strong)) +
-        ' | Watch: ' + str(len(watch))
+        str(len(flagged)) + ' passed value criteria. | '
+        'BUY: ' + str(len(buy)) + ' | WAIT: ' + str(len(wait)) + ' | AVOID: ' + str(len(avoid))
     )
 
-    criteria_note = (
-        'US criteria: P/E&lt;25, P/B&lt;3.0, Div&gt;2%, D/E&lt;100, EPS&gt;5%, CR&gt;1.5, ROE&gt;15% | '
-        'HK/SG criteria: P/E&lt;15, P/B&lt;1.5, Div&gt;3%, D/E&lt;50, EPS&gt;5%, CR&gt;1.5, ROE&gt;12%'
+    legend = (
+        '<div style="background:#f9f9f9;border:1px solid #ddd;border-radius:6px;padding:12px;margin-bottom:20px;font-size:12px">'
+        '<b>How to read this report:</b><br>'
+        '<span style="color:#1b5e20;font-weight:bold">BUY</span> - Fundamentals strong, sanity checks pass. Consider buying a position.<br>'
+        '<span style="color:#e65100;font-weight:bold">WAIT</span> - Fundamentals good but some concerns. Monitor and wait for better entry.<br>'
+        '<span style="color:#b71c1c;font-weight:bold">AVOID</span> - Multiple red flags. Skip for now even though fundamentals pass.<br>'
+        '<br><b>Sanity checks include:</b> analyst rating, upside to target price, price trend (50MA vs 200MA), '
+        'distance from 52-week low, revenue growth, profit margin, insider ownership, short interest, and beta.'
+        '</div>'
     )
 
     return (
-        '<html><body style="font-family:Arial,sans-serif;color:#333;max-width:960px;margin:auto;padding:20px">'
-        '<h2 style="color:#1a237e;border-bottom:2px solid #1a237e;padding-bottom:8px">Daily Stock Screener - ' + date + '</h2>'
-        '<p style="background:#e8eaf6;padding:12px;border-radius:4px">' + summary + '<br><small>' + criteria_note + '</small></p>'
-        '<h3 style="color:#b71c1c">Strong Buys (score 6-7) - ' + str(len(strong)) + ' stocks</h3>' + table(strong, '#b71c1c') +
-        '<br><h3 style="color:#2e7d32">Watch List (score 5) - ' + str(len(watch)) + ' stocks</h3>' + table(watch, '#2e7d32') +
-        '<br><p style="font-size:11px;color:#999">For informational purposes only. Not financial advice. Data from Yahoo Finance.</p>'
+        '<html><body style="font-family:Arial,sans-serif;color:#333;max-width:1000px;margin:auto;padding:20px">'
+        '<h2 style="color:#1a237e;border-bottom:2px solid #1a237e;padding-bottom:8px">Daily Stock Screener - ' + date_str + '</h2>'
+        '<p style="background:#e8eaf6;padding:12px;border-radius:4px">' + summary + '</p>'
+        + legend +
+        '<h3 style="color:#1b5e20">BUY - ' + str(len(buy)) + ' stocks</h3>' + section(buy, 'BUY', '#1b5e20') +
+        '<h3 style="color:#e65100">WAIT - ' + str(len(wait)) + ' stocks</h3>' + section(wait, 'WAIT', '#e65100') +
+        '<h3 style="color:#b71c1c">AVOID - ' + str(len(avoid)) + ' stocks</h3>' + section(avoid, 'AVOID', '#b71c1c') +
+        '<br><p style="font-size:11px;color:#999">For informational purposes only. Not financial advice. '
+        'Data from Yahoo Finance. Always do your own research before investing.</p>'
         '</body></html>'
     )
 
-
-def send_email(html, date, total):
+# -- Send email --------------------------------------------------
+def send_email(html, date_str, buy_count, total):
     msg = MIMEMultipart('alternative')
-    msg['Subject'] = 'Daily Stock Screener - ' + str(total) + ' flagged - ' + date
-    msg['From'] = SENDER_EMAIL
-    msg['To'] = RECIPIENT_EMAIL
+    msg['Subject'] = 'Stock Screener - ' + str(buy_count) + ' BUY signals - ' + date_str
+    msg['From']    = SENDER_EMAIL
+    msg['To']      = RECIPIENT_EMAIL
     msg.attach(MIMEText(html, 'html'))
     try:
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as s:
@@ -245,15 +396,16 @@ def send_email(html, date, total):
     except Exception as e:
         print('Email error: ' + str(e))
 
-
+# -- Main --------------------------------------------------------
 if __name__ == '__main__':
     if is_market_holiday():
         exit(0)
-    date = datetime.now().strftime('%d %b %Y')
-    print('Daily Stock Screener - ' + date)
+    date_str = datetime.now().strftime('%d %b %Y')
+    print('Daily Stock Screener - ' + date_str)
     flagged  = screen(US_STOCKS, 'US', CRITERIA_US)
     flagged += screen(HK_STOCKS, 'HK', CRITERIA_HKSG)
     flagged += screen(SG_STOCKS, 'SG', CRITERIA_HKSG)
-    print('Total flagged: ' + str(len(flagged)))
-    html = build_html(flagged, date)
-    send_email(html, date, len(flagged))
+    buy_count = sum(1 for s in flagged if s['rec'] == 'BUY')
+    print('Total flagged: ' + str(len(flagged)) + ' | BUY: ' + str(buy_count))
+    html = build_html(flagged, date_str)
+    send_email(html, date_str, buy_count, len(flagged))
