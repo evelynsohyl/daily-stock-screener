@@ -532,16 +532,16 @@ def sanity_checks(stock):
         reason = 'Strong fundamentals, no red flags, multiple positive signals.'
     elif red_count >= 3:
         rec = 'AVOID'
-        reason = 'Multiple red flags. Wait for conditions to improve.'
+        reason = 'Red flags: ' + '; '.join(red[:3]) + '.'
     elif red_count >= 1 and green_count >= red_count:
         rec = 'WAIT'
-        reason = 'Some concerns. Monitor and wait for better entry.'
+        reason = 'Concern: ' + '; '.join(red) + '.'
     elif red_count == 0 and green_count >= 2:
         rec = 'BUY'
         reason = 'Good fundamentals with positive signals.'
     else:
         rec = 'WAIT'
-        reason = 'Insufficient positive signals to confirm entry.'
+        reason = 'Limited positive signals (' + str(green_count) + ' green, ' + str(red_count) + ' red). Wait for stronger confirmation.'
 
     return green, red, rec, reason, headlines
 
