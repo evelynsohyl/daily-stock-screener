@@ -2,8 +2,51 @@ import yfinance as yf
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from datetime import datetime
+from datetime import datetime, date
 import time
+
+# Market holidays (US, HK, SG combined) - dates when all markets are closed
+# Update this list each year
+MARKET_HOLIDAYS = [
+    # 2025
+    date(2025, 1, 1),   # New Year's Day
+    date(2025, 1, 29),  # Lunar New Year (HK/SG)
+    date(2025, 1, 30),  # Lunar New Year (HK/SG)
+    date(2025, 4, 18),  # Good Friday
+    date(2025, 4, 21),  # Easter Monday
+    date(2025, 5, 1),   # Labour Day (HK/SG)
+    date(2025, 5, 26),  # Memorial Day (US)
+    date(2025, 6, 19),  # Juneteenth (US)
+    date(2025, 7, 4),   # Independence Day (US)
+    date(2025, 9, 1),   # Labor Day (US)
+    date(2025, 10, 1),  # National Day (HK)
+    date(2025, 11, 27), # Thanksgiving (US)
+    date(2025, 12, 25), # Christmas
+    date(2025, 12, 26), # Boxing Day (HK/SG)
+    # 2026
+    date(2026, 1, 1),   # New Year's Day
+    date(2026, 2, 17),  # Lunar New Year (HK/SG)
+    date(2026, 2, 18),  # Lunar New Year (HK/SG)
+    date(2026, 2, 19),  # Lunar New Year (HK/SG)
+    date(2026, 4, 3),   # Good Friday
+    date(2026, 4, 6),   # Easter Monday
+    date(2026, 5, 1),   # Labour Day (HK/SG)
+    date(2026, 5, 25),  # Memorial Day (US)
+    date(2026, 6, 19),  # Juneteenth (US)
+    date(2026, 7, 3),   # Independence Day observed (US)
+    date(2026, 9, 7),   # Labor Day (US)
+    date(2026, 10, 1),  # National Day (HK)
+    date(2026, 11, 26), # Thanksgiving (US)
+    date(2026, 12, 25), # Christmas
+    date(2026, 12, 26), # Boxing Day (HK/SG)
+]
+
+def is_market_holiday():
+    today = date.today()
+    if today in MARKET_HOLIDAYS:
+        print('Today is a market holiday (' + today.strftime('%d %b %Y') + '). Skipping.')
+        return True
+    return False
 
 SENDER_EMAIL = 'evelynsohyl@gmail.com'
 SENDER_APP_PASSWORD = 'sjef izzp kvbk htay'
@@ -204,6 +247,8 @@ def send_email(html, date, total):
 
 
 if __name__ == '__main__':
+    if is_market_holiday():
+        exit(0)
     date = datetime.now().strftime('%d %b %Y')
     print('Daily Stock Screener - ' + date)
     flagged  = screen(US_STOCKS, 'US', CRITERIA_US)
