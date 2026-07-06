@@ -1,3 +1,60 @@
+How to Create and Use an Agent - Manus
+No tasks yet
+
+Share
+yes seperate it for me
+On it! Updating the screener with market-specific criteria now.
+Done! The updated screener.py is attached. Here is what changed:
+Market
+Old P/E Threshold
+New P/E Threshold
+Other Changes
+US
+P/E < 15
+P/E < 25
+P/B < 4.0, Div Yield > 1.5%, ROE > 15%
+HK
+P/E < 15
+P/E < 15 (unchanged)
+Same as before
+SG
+P/E < 15
+P/E < 15 (unchanged)
+Same as before
+The US criteria are now calibrated to how the US market actually trades today — still rigorous, but realistic.
+To update your GitHub repository:
+Go to your daily-stock-screener repository on GitHub
+Click on the screener.py file
+Click the pencil icon ✏️ (Edit this file) on the right
+Select all the text (Ctrl+A), delete it, then paste the contents of the new screener.py I attached
+Click Commit changes
+Then go to Actions → Daily Stock Screener → Run workflow to test the updated version!
+You should now see US stocks appearing in the results alongside HK and SG.
+screener.py
+Code · 10.70 KB
+View all files in this task
+Task completed
+How was this result?
+Suggested follow-ups
+"""
+Daily Stock Screener Agent
+Runs via GitHub Actions every weekday at 9 AM Singapore time.
+App Password is stored securely as a GitHub Secret (never in the code).
+"""
+
+import yfinance as yf
+import smtplib
+
+Task progress
+Create all required GitHub Actions files (workflow YAML and screener script)
+Write the step-by-step GitHub setup guide and deliver to user
+
+
+Outlook Mail
+
+
+Manus is an AI Agent and can make mistakes. Please double-check before use.
+
 """
 Daily Stock Screener Agent
 Runs via GitHub Actions every weekday at 9 AM Singapore time.
@@ -18,8 +75,20 @@ SENDER_APP_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD')  # Loaded from GitHub
 RECIPIENT_EMAIL     = 'evelynsohyl@gmail.com'
 MIN_SCORE_TO_FLAG   = 5
 
-# ── Screening Criteria ────────────────────────────────────────
-CRITERIA = {
+# ── Screening Criteria (Market-Specific) ─────────────────────
+# US market trades at higher valuations — relaxed P/E and P/B thresholds
+CRITERIA_US = {
+    'pe_ratio'        : {'threshold': 25,   'direction': 'below', 'label': 'P/E < 25'},
+    'pb_ratio'        : {'threshold': 4.0,  'direction': 'below', 'label': 'P/B < 4.0'},
+    'dividend_yield'  : {'threshold': 1.5,  'direction': 'above', 'label': 'Div Yield > 1.5%'},
+    'debt_to_equity'  : {'threshold': 100,  'direction': 'below', 'label': 'D/E < 100'},
+    'earnings_growth' : {'threshold': 8.0,  'direction': 'above', 'label': 'EPS Growth > 8%'},
+    'current_ratio'   : {'threshold': 1.2,  'direction': 'above', 'label': 'Current Ratio > 1.2'},
+    'roe'             : {'threshold': 15.0, 'direction': 'above', 'label': 'ROE > 15%'},
+}
+
+# HK and SG markets trade at lower valuations — stricter classic value criteria
+CRITERIA_HKSG = {
     'pe_ratio'        : {'threshold': 15,   'direction': 'below', 'label': 'P/E < 15'},
     'pb_ratio'        : {'threshold': 1.5,  'direction': 'below', 'label': 'P/B < 1.5'},
     'dividend_yield'  : {'threshold': 3.0,  'direction': 'above', 'label': 'Div Yield > 3%'},
@@ -85,11 +154,11 @@ def fetch_stock(ticker):
         print(f'  ERROR {ticker}: {e}')
         return None
 
-def score_stock(stock):
+def score_stock(stock, criteria):
     if not stock:
         return 0, [], []
     score, passed, failed = 0, [], []
-    for metric, config in CRITERIA.items():
+    for metric, config in criteria.items():
         value = stock.get(metric)
         if value is None:
             failed.append(f"{config['label']} (no data)")
@@ -102,13 +171,13 @@ def score_stock(stock):
             failed.append(f"{config['label']} ({value:.1f})")
     return score, passed, failed
 
-def screen_market(tickers, label):
+def screen_market(tickers, label, criteria):
     print(f'\n[{label}] Scanning {len(tickers)} stocks...')
     flagged = []
     for i, ticker in enumerate(tickers):
         print(f'  {i+1}/{len(tickers)} {ticker}')
         stock = fetch_stock(ticker)
-        score, passed, failed = score_stock(stock)
+        score, passed, failed = score_stock(stock, criteria)
         if score >= MIN_SCORE_TO_FLAG:
             flagged.append({
                 'ticker' : ticker,
@@ -153,7 +222,7 @@ def build_email_html(flagged, run_date):
     return (f"<html><body style='font-family:Arial,sans-serif;color:#333;max-width:900px;margin:auto;padding:20px'>"
             f"<h2 style='color:#1a237e;border-bottom:2px solid #1a237e;padding-bottom:8px'>📈 Daily Stock Screener — {run_date}</h2>"
             f"<p style='background:#e8eaf6;padding:12px;border-radius:4px'>"
-            f"Screened <b>{len(US_STOCKS)} US</b>, <b>{len(HK_STOCKS)} HK</b>, <b>{len(SG_STOCKS)} SG</b> stocks today.<br>"
+            f"Screened <b>{len(US_STOCKS)} US</b> (P/E&lt;25 criteria), <b>{len(HK_STOCKS)} HK</b> (P/E&lt;15 criteria), <b>{len(SG_STOCKS)} SG</b> (P/E&lt;15 criteria) stocks today.<br>"
             f"<b>{len(flagged)}</b> stocks flagged. &nbsp;|&nbsp; 🌟 Strong Buys: <b>{len(strong)}</b> &nbsp;|&nbsp; ✅ Watch: <b>{len(watch)}</b></p>"
             f"<h3 style='color:#b71c1c'>🌟 Strong Buys — Score 6 or 7 out of 7 ({len(strong)} stocks)</h3>{table(strong,'#b71c1c')}"
             f"<br><h3 style='color:#2e7d32'>✅ Watch List — Score 5 out of 7 ({len(watch)} stocks)</h3>{table(watch,'#2e7d32')}"
@@ -186,9 +255,9 @@ if __name__ == '__main__':
     print(f'  Markets : US ({len(US_STOCKS)}) | HK ({len(HK_STOCKS)}) | SG ({len(SG_STOCKS)})')
     print('=' * 56)
 
-    all_flagged  = screen_market(US_STOCKS, 'US')
-    all_flagged += screen_market(HK_STOCKS, 'HK')
-    all_flagged += screen_market(SG_STOCKS, 'SG')
+    all_flagged  = screen_market(US_STOCKS, 'US', CRITERIA_US)
+    all_flagged += screen_market(HK_STOCKS, 'HK', CRITERIA_HKSG)
+    all_flagged += screen_market(SG_STOCKS, 'SG', CRITERIA_HKSG)
 
     print(f'\n{"="*56}')
     print(f'  DONE — {len(all_flagged)} stocks flagged')
