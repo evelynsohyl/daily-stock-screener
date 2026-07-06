@@ -11,14 +11,27 @@ from email.mime.text import MIMEText
 from datetime import datetime
 import time
 
-# ── Configuration ─────────────────────────────────────────────
+# -- Configuration -------------------------------------
 SENDER_EMAIL        = 'evelynsohyl@gmail.com'
 SENDER_APP_PASSWORD = 'sjef izzp kvbk htay'
 RECIPIENT_EMAIL     = 'evelynsohyl@gmail.com'
 MIN_SCORE_TO_FLAG   = 5
 
-# ── Screening Criteria ────────────────────────────────────────
-CRITERIA = {
+# -- Screening Criteria --------------------------------
+# US stocks trade at higher valuations, so we use relaxed P/E and P/B thresholds.
+# HK and SG stocks use the original stricter thresholds.
+
+CRITERIA_US = {
+    'pe_ratio'        : {'threshold': 25,   'direction': 'below', 'label': 'P/E < 25'},
+    'pb_ratio'        : {'threshold': 3.0,  'direction': 'below', 'label': 'P/B < 3.0'},
+    'dividend_yield'  : {'threshold': 2.0,  'direction': 'above', 'label': 'Div Yield > 2%'},
+    'debt_to_equity'  : {'threshold': 100,  'direction': 'below', 'label': 'D/E < 100'},
+    'earnings_growth' : {'threshold': 5.0,  'direction': 'above', 'label': 'EPS Growth > 5%'},
+    'current_ratio'   : {'threshold': 1.5,  'direction': 'above', 'label': 'Current Ratio > 1.5'},
+    'roe'             : {'threshold': 15.0, 'direction': 'above', 'label': 'ROE > 15%'},
+}
+
+CRITERIA_HK_SG = {
     'pe_ratio'        : {'threshold': 15,   'direction': 'below', 'label': 'P/E < 15'},
     'pb_ratio'        : {'threshold': 1.5,  'direction': 'below', 'label': 'P/B < 1.5'},
     'dividend_yield'  : {'threshold': 3.0,  'direction': 'above', 'label': 'Div Yield > 3%'},
@@ -28,7 +41,7 @@ CRITERIA = {
     'roe'             : {'threshold': 12.0, 'direction': 'above', 'label': 'ROE > 12%'},
 }
 
-# ── Stock Universe ────────────────────────────────────────────
+# -- Stock Universe ------------------------------------
 US_STOCKS = [
     'AAPL','MSFT','GOOGL','AMZN','NVDA','META','TSLA','BRK-B','JPM','V',
     'UNH','XOM','JNJ','WMT','MA','PG','HD','CVX','MRK','ABBV',
@@ -58,13 +71,13 @@ SG_STOCKS = [
     'BVA.SI','P40U.SI','AJBU.SI'
 ]
 
-# ── Fetch Stock Data ──────────────────────────────────────────
+# -- Fetch Stock Data ----------------------------------
 def fetch_stock(ticker):
     try:
         t = yf.Ticker(ticker)
         info = t.info
         if not info or info.get('quoteType') is None:
-            print(f'  {ticker}: No summary info found, symbol may be delisted')
+            print('  ' + ticker + ': No summary info found, symbol may be delisted')
             return None
         dye = info.get('dividendYield')
         div = (dye * 100) if dye else 0.0
@@ -83,36 +96,36 @@ def fetch_stock(ticker):
             'roe'             : (info.get('returnOnEquity', 0) or 0) * 100,
         }
     except Exception as e:
-        print(f'  ERROR fetching {ticker}: {e}')
+        print('  ERROR fetching ' + ticker + ': ' + str(e))
         return None
 
-# ── Score Stock ───────────────────────────────────────────────
-def score_stock(stock):
+# -- Score Stock ---------------------------------------
+def score_stock(stock, criteria):
     if not stock:
         return 0, [], []
     score, passed, failed = 0, [], []
-    for metric, config in CRITERIA.items():
+    for metric, config in criteria.items():
         value = stock.get(metric)
         if value is None:
-            failed.append(f"{config['label']} (no data)")
+            failed.append(config['label'] + ' (no data)')
             continue
         t = config['threshold']
         if (config['direction'] == 'below' and value < t) or \
            (config['direction'] == 'above' and value > t):
             score += 1
-            passed.append(f"{config['label']} ({value:.1f})")
+            passed.append(config['label'] + ' (' + str(round(value, 1)) + ')')
         else:
-            failed.append(f"{config['label']} ({value:.1f})")
+            failed.append(config['label'] + ' (' + str(round(value, 1)) + ')')
     return score, passed, failed
 
-# ── Screen Market ─────────────────────────────────────────────
-def screen_market(tickers, label):
-    print(f'\n[{label}] Scanning {len(tickers)} stocks...')
+# -- Screen Market -------------------------------------
+def screen_market(tickers, label, criteria):
+    print('\n[' + label + '] Scanning ' + str(len(tickers)) + ' stocks...')
     flagged = []
     for i, ticker in enumerate(tickers):
-        print(f'  {i+1}/{len(tickers)} {ticker}')
+        print('  ' + str(i + 1) + '/' + str(len(tickers)) + ' ' + ticker)
         stock = fetch_stock(ticker)
-        score, passed, failed = score_stock(stock)
+        score, passed, failed = score_stock(stock, criteria)
         if score >= MIN_SCORE_TO_FLAG:
             verdict = 'STRONG BUY' if score >= 6 else 'WATCH LIST'
             flagged.append({
@@ -123,12 +136,13 @@ def screen_market(tickers, label):
                 'verdict' : verdict,
                 'passed'  : passed,
                 'failed'  : failed,
+                'market'  : label,
             })
         time.sleep(0.3)
-    print(f'  [{label}] Done - {len(flagged)} flagged out of {len(tickers)}')
+    print('  [' + label + '] Done - ' + str(len(flagged)) + ' flagged out of ' + str(len(tickers)))
     return flagged
 
-# ── Build Email HTML ──────────────────────────────────────────
+# -- Build Email HTML ----------------------------------
 def build_email_html(flagged, run_date):
     strong = [s for s in flagged if 'STRONG' in s['verdict']]
     watch  = [s for s in flagged if 'WATCH'  in s['verdict']]
@@ -137,42 +151,57 @@ def build_email_html(flagged, run_date):
         html = ''
         for s in stocks:
             color = '#b71c1c' if 'STRONG' in s['verdict'] else '#2e7d32'
-            passed_str = '<br>'.join([f"<span style='color:green'>✓ {p}</span>" for p in s['passed']])
-            failed_str = '<br>'.join([f"<span style='color:#999'>✗ {f}</span>" for f in s['failed']])
-            html += (f"<tr>"
-                     f"<td style='padding:8px;font-weight:bold;color:{color}'>{s['ticker']}</td>"
-                     f"<td style='padding:8px'>{s['name']}</td>"
-                     f"<td style='padding:8px'>{s['sector']}</td>"
-                     f"<td style='padding:8px;text-align:center;font-weight:bold;color:{color}'>{s['score']}/7</td>"
-                     f"<td style='padding:8px;font-size:12px'>{passed_str}</td>"
-                     f"<td style='padding:8px;font-size:12px'>{failed_str}</td>"
-                     f"</tr>")
+            passed_str = '<br>'.join(["<span style='color:green'>&#10003; " + p + "</span>" for p in s['passed']])
+            failed_str = '<br>'.join(["<span style='color:#999'>&#10007; " + f + "</span>" for f in s['failed']])
+            html += (
+                "<tr>"
+                "<td style='padding:8px;font-weight:bold;color:" + color + "'>" + s['ticker'] + "</td>"
+                "<td style='padding:8px'>" + s['name'] + "</td>"
+                "<td style='padding:8px'>" + s['market'] + "</td>"
+                "<td style='padding:8px'>" + s['sector'] + "</td>"
+                "<td style='padding:8px;text-align:center;font-weight:bold;color:" + color + "'>" + str(s['score']) + "/7</td>"
+                "<td style='padding:8px;font-size:12px'>" + passed_str + "</td>"
+                "<td style='padding:8px;font-size:12px'>" + failed_str + "</td>"
+                "</tr>"
+            )
         return html
 
     def table(stocks, color):
         if not stocks:
             return "<p style='color:#999'>No stocks in this category today.</p>"
-        return (f"<table style='width:100%;border-collapse:collapse;font-size:13px'>"
-                f"<tr style='background:{color};color:white'>"
-                f"<th style='padding:8px'>Ticker</th><th style='padding:8px'>Name</th>"
-                f"<th style='padding:8px'>Sector</th><th style='padding:8px'>Score</th>"
-                f"<th style='padding:8px'>Passed</th><th style='padding:8px'>Failed</th></tr>"
-                f"{rows(stocks)}</table>")
+        return (
+            "<table style='width:100%;border-collapse:collapse;font-size:13px'>"
+            "<tr style='background:" + color + ";color:white'>"
+            "<th style='padding:8px'>Ticker</th>"
+            "<th style='padding:8px'>Name</th>"
+            "<th style='padding:8px'>Market</th>"
+            "<th style='padding:8px'>Sector</th>"
+            "<th style='padding:8px'>Score</th>"
+            "<th style='padding:8px'>Passed</th>"
+            "<th style='padding:8px'>Failed</th>"
+            "</tr>"
+            + rows(stocks) +
+            "</table>"
+        )
 
-    return (f"<html><body style='font-family:Arial,sans-serif;color:#333;max-width:900px;margin:auto;padding:20px'>"
-            f"<h2 style='color:#1a237e;border-bottom:2px solid #1a237e;padding-bottom:8px'>Daily Stock Screener - {run_date}</h2>"
-            f"<p style='background:#e8eaf6;padding:12px;border-radius:4px'>"
-            f"Screened <b>{len(US_STOCKS)} US</b>, <b>{len(HK_STOCKS)} HK</b>, <b>{len(SG_STOCKS)} SG</b> stocks today.<br>"
-            f"<b>{len(flagged)}</b> stocks flagged. | Strong Buys: <b>{len(strong)}</b> | Watch: <b>{len(watch)}</b></p>"
-            f"<h3 style='color:#b71c1c'>Strong Buys - Score 6 or 7 out of 7 ({len(strong)} stocks)</h3>{table(strong,'#b71c1c')}"
-            f"<br><h3 style='color:#2e7d32'>Watch List - Score 5 out of 7 ({len(watch)} stocks)</h3>{table(watch,'#2e7d32')}"
-            f"<br><p style='font-size:11px;color:#999'>For informational purposes only. Not financial advice. Data from Yahoo Finance.</p>"
-            f"</body></html>")
+    return (
+        "<html><body style='font-family:Arial,sans-serif;color:#333;max-width:900px;margin:auto;padding:20px'>"
+        "<h2 style='color:#1a237e;border-bottom:2px solid #1a237e;padding-bottom:8px'>Daily Stock Screener - " + run_date + "</h2>"
+        "<p style='background:#e8eaf6;padding:12px;border-radius:4px'>"
+        "Screened <b>" + str(len(US_STOCKS)) + " US</b>, <b>" + str(len(HK_STOCKS)) + " HK</b>, <b>" + str(len(SG_STOCKS)) + " SG</b> stocks today.<br>"
+        "US criteria: P/E &lt; 25, P/B &lt; 3.0, Div &gt; 2%, D/E &lt; 100, EPS Growth &gt; 5%, Current Ratio &gt; 1.5, ROE &gt; 15%<br>"
+        "HK/SG criteria: P/E &lt; 15, P/B &lt; 1.5, Div &gt; 3%, D/E &lt; 50, EPS Growth &gt; 5%, Current Ratio &gt; 1.5, ROE &gt; 12%<br>"
+        "<b>" + str(len(flagged)) + "</b> stocks flagged. | Strong Buys: <b>" + str(len(strong)) + "</b> | Watch: <b>" + str(len(watch)) + "</b></p>"
+        "<h3 style='color:#b71c1c'>Strong Buys - Score 6 or 7 out of 7 (" + str(len(strong)) + " stocks)</h3>" + table(strong, '#b71c1c') +
+        "<br><h3 style='color:#2e7d32'>Watch List - Score 5 out of 7 (" + str(len(watch)) + " stocks)</h3>" + table(watch, '#2e7d32') +
+        "<br><p style='font-size:11px;color:#999'>For informational purposes only. Not financial advice. Data from Yahoo Finance.</p>"
+        "</body></html>"
+    )
 
-# ── Send Email ────────────────────────────────────────────────
+# -- Send Email ----------------------------------------
 def send_email(html, run_date, total):
     msg = MIMEMultipart('alternative')
-    msg['Subject'] = f'Daily Stock Screener - {total} stocks flagged - {run_date}'
+    msg['Subject'] = 'Daily Stock Screener - ' + str(total) + ' stocks flagged - ' + run_date
     msg['From']    = SENDER_EMAIL
     msg['To']      = RECIPIENT_EMAIL
     msg.attach(MIMEText(html, 'html'))
@@ -180,27 +209,27 @@ def send_email(html, run_date, total):
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
             server.login(SENDER_EMAIL, SENDER_APP_PASSWORD)
             server.sendmail(SENDER_EMAIL, RECIPIENT_EMAIL, msg.as_string())
-        print(f'Email sent to {RECIPIENT_EMAIL}!')
+        print('Email sent to ' + RECIPIENT_EMAIL + '!')
     except Exception as e:
-        print(f'Email failed: {e}')
+        print('Email failed: ' + str(e))
 
-# ── Main ──────────────────────────────────────────────────────
+# -- Main ----------------------------------------------
 if __name__ == '__main__':
     run_date = datetime.now().strftime('%d %b %Y')
     print('=' * 56)
     print('  DAILY STOCK SCREENER AGENT')
-    print(f'  Date    : {run_date}')
-    print(f'  Markets : US ({len(US_STOCKS)}) | HK ({len(HK_STOCKS)}) | SG ({len(SG_STOCKS)})')
+    print('  Date    : ' + run_date)
+    print('  Markets : US (' + str(len(US_STOCKS)) + ') | HK (' + str(len(HK_STOCKS)) + ') | SG (' + str(len(SG_STOCKS)) + ')')
     print('=' * 56)
 
-    all_flagged  = screen_market(US_STOCKS, 'US')
-    all_flagged += screen_market(HK_STOCKS, 'HK')
-    all_flagged += screen_market(SG_STOCKS, 'SG')
+    all_flagged  = screen_market(US_STOCKS, 'US', CRITERIA_US)
+    all_flagged += screen_market(HK_STOCKS, 'HK', CRITERIA_HK_SG)
+    all_flagged += screen_market(SG_STOCKS, 'SG', CRITERIA_HK_SG)
 
-    print(f'\n{"="*56}')
-    print(f'  DONE - {len(all_flagged)} stocks flagged')
-    print(f'  Strong Buys : {sum(1 for s in all_flagged if "STRONG" in s["verdict"])}')
-    print(f'  Watch List  : {sum(1 for s in all_flagged if "WATCH"  in s["verdict"])}')
+    print('\n' + '=' * 56)
+    print('  DONE - ' + str(len(all_flagged)) + ' stocks flagged')
+    print('  Strong Buys : ' + str(sum(1 for s in all_flagged if 'STRONG' in s['verdict'])))
+    print('  Watch List  : ' + str(sum(1 for s in all_flagged if 'WATCH'  in s['verdict'])))
     print('=' * 56)
 
     html = build_email_html(all_flagged, run_date)
