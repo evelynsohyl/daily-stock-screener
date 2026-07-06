@@ -52,26 +52,93 @@ def is_market_holiday():
     return False
 
 # ================================================================
-# SCREENING CRITERIA
+# SCREENING CRITERIA - MULTI-BUCKET
 # ================================================================
-CRITERIA_US = {
+
+# --- Growth bucket (US / HK / SG) ---
+# For companies with EPS growth > 20% or revenue growth > 20%
+# Uses PEG, Rule of 40, gross margin, FCF proxy
+CRITERIA_GROWTH = {
+    'peg_ratio':       {'threshold': 1.5,  'direction': 'below', 'label': 'PEG < 1.5'},
+    'revenue_growth':  {'threshold': 15.0, 'direction': 'above', 'label': 'Revenue Growth > 15%'},
+    'gross_margins':   {'threshold': 40.0, 'direction': 'above', 'label': 'Gross Margin > 40%'},
+    'profit_margins':  {'threshold': 10.0, 'direction': 'above', 'label': 'Profit Margin > 10%'},
+    'earnings_growth': {'threshold': 20.0, 'direction': 'above', 'label': 'EPS Growth > 20%'},
+    'roe':             {'threshold': 15.0, 'direction': 'above', 'label': 'ROE > 15%'},
+    'debt_to_equity':  {'threshold': 150,  'direction': 'below', 'label': 'D/E < 150'},
+}
+
+# --- Value bucket US ---
+# For mature/stable US companies with moderate growth
+CRITERIA_VALUE_US = {
     'pe_ratio':        {'threshold': 25,   'direction': 'below', 'label': 'P/E < 25'},
     'pb_ratio':        {'threshold': 3.0,  'direction': 'below', 'label': 'P/B < 3.0'},
-    'dividend_yield':  {'threshold': 2.0,  'direction': 'above', 'label': 'Div Yield > 2%'},
     'debt_to_equity':  {'threshold': 100,  'direction': 'below', 'label': 'D/E < 100'},
     'earnings_growth': {'threshold': 5.0,  'direction': 'above', 'label': 'EPS Growth > 5%'},
     'current_ratio':   {'threshold': 1.5,  'direction': 'above', 'label': 'Current Ratio > 1.5'},
     'roe':             {'threshold': 15.0, 'direction': 'above', 'label': 'ROE > 15%'},
+    'profit_margins':  {'threshold': 8.0,  'direction': 'above', 'label': 'Profit Margin > 8%'},
 }
-CRITERIA_HKSG = {
+
+# --- Value bucket HK/SG ---
+# Stricter thresholds for HK/SG mature companies
+CRITERIA_VALUE_HKSG = {
     'pe_ratio':        {'threshold': 15,   'direction': 'below', 'label': 'P/E < 15'},
     'pb_ratio':        {'threshold': 1.5,  'direction': 'below', 'label': 'P/B < 1.5'},
-    'dividend_yield':  {'threshold': 3.0,  'direction': 'above', 'label': 'Div Yield > 3%'},
     'debt_to_equity':  {'threshold': 50,   'direction': 'below', 'label': 'D/E < 50'},
     'earnings_growth': {'threshold': 5.0,  'direction': 'above', 'label': 'EPS Growth > 5%'},
     'current_ratio':   {'threshold': 1.5,  'direction': 'above', 'label': 'Current Ratio > 1.5'},
     'roe':             {'threshold': 12.0, 'direction': 'above', 'label': 'ROE > 12%'},
+    'profit_margins':  {'threshold': 8.0,  'direction': 'above', 'label': 'Profit Margin > 8%'},
 }
+
+# --- Dividend / Income bucket (HK & SG only - US excluded due to 30% withholding tax) ---
+CRITERIA_DIVIDEND = {
+    'dividend_yield':  {'threshold': 3.5,  'direction': 'above', 'label': 'Div Yield > 3.5%'},
+    'payout_ratio':    {'threshold': 75.0, 'direction': 'below', 'label': 'Payout Ratio < 75%'},
+    'debt_to_equity':  {'threshold': 80,   'direction': 'below', 'label': 'D/E < 80'},
+    'roe':             {'threshold': 8.0,  'direction': 'above', 'label': 'ROE > 8%'},
+    'pe_ratio':        {'threshold': 20,   'direction': 'below', 'label': 'P/E < 20'},
+    'revenue_growth':  {'threshold': -5.0, 'direction': 'above', 'label': 'Revenue not declining'},
+    'profit_margins':  {'threshold': 5.0,  'direction': 'above', 'label': 'Profit Margin > 5%'},
+}
+
+# --- REIT bucket (HK & SG only) ---
+# REITs use different metrics - EPS distorted by depreciation
+CRITERIA_REIT = {
+    'dividend_yield':  {'threshold': 4.0,  'direction': 'above', 'label': 'Dist Yield > 4%'},
+    'pb_ratio':        {'threshold': 1.2,  'direction': 'below', 'label': 'P/B < 1.2 (NAV discount)'},
+    'debt_to_equity':  {'threshold': 100,  'direction': 'below', 'label': 'D/E < 100'},
+    'roe':             {'threshold': 5.0,  'direction': 'above', 'label': 'ROE > 5%'},
+    'revenue_growth':  {'threshold': -5.0, 'direction': 'above', 'label': 'Revenue not declining'},
+    'profit_margins':  {'threshold': 10.0, 'direction': 'above', 'label': 'Profit Margin > 10%'},
+    'current_ratio':   {'threshold': 0.8,  'direction': 'above', 'label': 'Current Ratio > 0.8'},
+}
+
+MIN_SCORE_GROWTH   = 5  # out of 7
+MIN_SCORE_VALUE    = 5  # out of 7
+MIN_SCORE_DIVIDEND = 5  # out of 7
+MIN_SCORE_REIT     = 4  # out of 7
+
+def classify_bucket(stock, market):
+    """Classify a stock into Growth / Value / Dividend / REIT bucket."""
+    sector       = (stock.get('sector') or '').lower()
+    eps_growth   = stock.get('earnings_growth') or 0
+    rev_growth   = stock.get('revenue_growth') or 0
+    div_yield    = stock.get('dividend_yield') or 0
+    is_reit      = 'real estate' in sector
+    is_hksg      = market in ('HK', 'SG')
+    is_growth    = (eps_growth >= 20 or rev_growth >= 20)
+
+    if is_reit and is_hksg:
+        return 'REIT', CRITERIA_REIT, MIN_SCORE_REIT
+    if is_growth:
+        return 'Growth', CRITERIA_GROWTH, MIN_SCORE_GROWTH
+    if is_hksg and div_yield >= 3.5:
+        return 'Dividend', CRITERIA_DIVIDEND, MIN_SCORE_DIVIDEND
+    if market == 'US':
+        return 'Value', CRITERIA_VALUE_US, MIN_SCORE_VALUE
+    return 'Value', CRITERIA_VALUE_HKSG, MIN_SCORE_VALUE
 
 # ================================================================
 # STOCK UNIVERSE
@@ -369,8 +436,11 @@ def fetch_stock(ticker):
         info = t.info
         if not info or info.get('quoteType') is None:
             return None
-        dy = info.get('dividendYield')
-        eg = info.get('earningsGrowth')
+        dy  = info.get('dividendYield')
+        eg  = info.get('earningsGrowth')
+        pr  = info.get('payoutRatio')
+        gm  = info.get('grossMargins')
+        peg = info.get('pegRatio')
         return {
             'ticker':          ticker,
             'name':            info.get('longName', ticker),
@@ -387,6 +457,9 @@ def fetch_stock(ticker):
             'current_price':   info.get('currentPrice') or info.get('regularMarketPrice'),
             'revenue_growth':  (info.get('revenueGrowth') or 0) * 100,
             'profit_margins':  (info.get('profitMargins') or 0) * 100,
+            'gross_margins':   (gm * 100) if gm else None,
+            'payout_ratio':    (pr * 100) if pr else None,
+            'peg_ratio':       peg,
             'insider_pct':     (info.get('heldPercentInsiders') or 0) * 100,
             'short_ratio':     info.get('shortRatio'),
             'beta':            info.get('beta'),
@@ -548,16 +621,20 @@ def sanity_checks(stock):
 # ================================================================
 # SCREEN MARKET
 # ================================================================
-def screen(tickers, market, criteria, wl_history):
+def screen(tickers, market, wl_history):
     print('Scanning ' + market + ' (' + str(len(tickers)) + ' stocks)...')
     results = []
     for i, ticker in enumerate(tickers):
         print('  ' + str(i + 1) + '/' + str(len(tickers)) + ' ' + ticker)
         stock = fetch_stock(ticker)
+        if not stock:
+            time.sleep(0.5)
+            continue
+        bucket, criteria, min_sc = classify_bucket(stock, market)
         sc, passed, failed = score_stock(stock, criteria)
-        if sc >= MIN_SCORE:
+        if sc >= min_sc:
             green, red, rec, reason, headlines = sanity_checks(stock)
-            verdict = 'STRONG BUY' if sc >= 6 else 'WATCH'
+            verdict = 'STRONG BUY' if sc >= len(criteria) - 1 else 'WATCH'
             wl_status = get_watchlist_status(ticker, wl_history)
             chart_b64 = get_mini_chart(ticker)
             results.append({
@@ -565,7 +642,9 @@ def screen(tickers, market, criteria, wl_history):
                 'name':       stock['name'],
                 'market':     market,
                 'sector':     stock['sector'],
+                'bucket':     bucket,
                 'score':      sc,
+                'max_score':  len(criteria),
                 'verdict':    verdict,
                 'passed':     passed,
                 'failed':     failed,
@@ -580,7 +659,7 @@ def screen(tickers, market, criteria, wl_history):
                 'target':     stock.get('target_price'),
                 'graham':     stock.get('graham_value'),
             })
-            print('    -> ' + rec + ' (' + wl_status + ')')
+            print('    -> ' + bucket + ' | ' + rec + ' (' + wl_status + ')')
         time.sleep(0.5)
     return results
 
@@ -606,9 +685,12 @@ def build_html(flagged, date_str, market_colour, portfolio_pnl, wl_history):
     def stock_card(s):
         rc = rec_colors[s['rec']]
         rb = rec_bg[s['rec']]
-        new_badge = ('<span style="background:#1a237e;color:white;font-size:10px;padding:2px 6px;border-radius:10px;margin-left:6px">NEW</span>'
+        bucket_colors = {'Growth': '#1565c0', 'Value': '#4a148c', 'Dividend': '#1b5e20', 'REIT': '#e65100'}
+        bucket_color = bucket_colors.get(s.get('bucket', 'Value'), '#555')
+        bucket_badge = '<span style="background:' + bucket_color + ';color:white;font-size:10px;padding:2px 6px;border-radius:10px;margin-left:4px">' + s.get('bucket', 'Value') + '</span>'
+        new_badge = ('<span style="background:#1a237e;color:white;font-size:10px;padding:2px 6px;border-radius:10px;margin-left:4px">NEW</span>'
                      if s['wl_status'] == 'new' else
-                     '<span style="background:#555;color:white;font-size:10px;padding:2px 6px;border-radius:10px;margin-left:6px">RETURNING</span>')
+                     '<span style="background:#777;color:white;font-size:10px;padding:2px 6px;border-radius:10px;margin-left:4px">RETURNING</span>')
         price_line = ''
         if s['price'] and s['target']:
             upside = (s['target'] - s['price']) / s['price'] * 100
@@ -636,13 +718,13 @@ def build_html(flagged, date_str, market_colour, portfolio_pnl, wl_history):
         return (
             '<tr style="background:' + rb + ';border-bottom:2px solid #eee;vertical-align:top">'
             '<td style="padding:12px;min-width:160px">'
-            '<div style="font-size:16px;font-weight:bold">' + s['ticker'] + new_badge + '</div>'
+            '<div style="font-size:16px;font-weight:bold">' + s['ticker'] + bucket_badge + new_badge + '</div>'
             '<div style="font-size:12px;color:#555">' + s['name'] + '</div>'
             '<div style="font-size:11px;color:#888">' + s['market'] + ' | ' + s['sector'] + '</div>'
             + price_line + graham_line + chart_img +
             '</td>'
             '<td style="padding:12px;min-width:120px">'
-            '<div style="font-size:13px;font-weight:bold;color:' + ('#b71c1c' if s['verdict']=='STRONG BUY' else '#2e7d32') + '">' + str(s['score']) + '/7</div>'
+            '<div style="font-size:13px;font-weight:bold;color:#2e7d32">' + str(s['score']) + '/' + str(s.get('max_score', 7)) + '</div>'
             + passed_html + failed_html +
             '</td>'
             '<td style="padding:12px;min-width:180px">' + green_html + red_html + '</td>'
@@ -713,7 +795,12 @@ def build_html(flagged, date_str, market_colour, portfolio_pnl, wl_history):
         '<span style="color:#e65100;font-weight:bold">WAIT</span> = good fundamentals but some concerns. '
         '<span style="color:#b71c1c;font-weight:bold">AVOID</span> = multiple red flags. '
         '<b>NEW</b> badge = first time appearing. '
-        'Graham value = estimated intrinsic value using Graham Number formula. '
+        'Graham value = estimated intrinsic value (Graham Number formula). '
+        '<b>Buckets:</b> '
+        '<span style="background:#1565c0;color:white;padding:1px 5px;border-radius:8px;font-size:11px">Growth</span> = EPS/Rev growth >20%, scored on PEG &amp; Rule of 40. '
+        '<span style="background:#4a148c;color:white;padding:1px 5px;border-radius:8px;font-size:11px">Value</span> = mature companies, scored on P/E, P/B, ROE. '
+        '<span style="background:#1b5e20;color:white;padding:1px 5px;border-radius:8px;font-size:11px">Dividend</span> = HK/SG income stocks (US excluded - 30% withholding tax). '
+        '<span style="background:#e65100;color:white;padding:1px 5px;border-radius:8px;font-size:11px">REIT</span> = HK/SG real estate trusts, scored on yield &amp; NAV. '
         'Not financial advice.</div>'
     )
 
@@ -787,9 +874,9 @@ if __name__ == '__main__':
     print('Loading portfolio...')
     portfolio_pnl = get_portfolio_pnl()
 
-    flagged  = screen(US_STOCKS, 'US', CRITERIA_US,   wl_history)
-    flagged += screen(HK_STOCKS, 'HK', CRITERIA_HKSG, wl_history)
-    flagged += screen(SG_STOCKS, 'SG', CRITERIA_HKSG, wl_history)
+    flagged  = screen(US_STOCKS, 'US', wl_history)
+    flagged += screen(HK_STOCKS, 'HK', wl_history)
+    flagged += screen(SG_STOCKS, 'SG', wl_history)
 
     save_watchlist([s['ticker'] for s in flagged])
 
