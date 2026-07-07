@@ -666,21 +666,39 @@ def sanity_checks(stock):
     green_count = len(green)
     red_count   = len(red)
 
-    if red_count == 0 and green_count >= 4:
-        rec = 'BUY'
-        reason = 'Strong fundamentals, no red flags, ' + str(green_count) + ' positive signals.'
-    elif red_count >= 3:
+    # Entry quality check: reject stocks that are overextended regardless of fundamentals
+    # A stock near its 52-week high with analyst target below current price is a poor entry
+    entry_ok = True
+    entry_reason = ''
+    if pct_52w >= 85:
+        entry_ok = False
+        entry_reason = 'Price near 52-week high (' + str(pct_52w) + '% above low) - wait for pullback'
+    current2 = stock.get('current_price')
+    target2  = stock.get('target_price')
+    if entry_ok and current2 and target2 and current2 > 0:
+        upside2 = (target2 - current2) / current2 * 100
+        if upside2 < 5:
+            entry_ok = False
+            entry_reason = 'Analyst target offers <5% upside (' + str(round(upside2,1)) + '%) - limited reward'
+
+    if red_count >= 3:
         rec = 'AVOID'
         reason = str(red_count) + ' red flags: ' + '; '.join(red) + '.'
-    elif red_count >= 1 and green_count >= red_count:
-        rec = 'WAIT'
-        reason = 'Concern (' + str(red_count) + ' flag' + ('s' if red_count > 1 else '') + '): ' + '; '.join(red) + '.'
+    elif not entry_ok:
+        rec = 'AVOID'
+        reason = 'Entry not ideal: ' + entry_reason + '.'
+    elif red_count == 0 and green_count >= 4:
+        rec = 'BUY'
+        reason = 'Strong fundamentals, no red flags, ' + str(green_count) + ' positive signals.'
     elif red_count == 0 and green_count >= 2:
         rec = 'BUY'
         reason = 'Good fundamentals, ' + str(green_count) + ' positive signals, no red flags.'
+    elif red_count >= 1 and green_count > red_count:
+        rec = 'BUY'
+        reason = 'Mostly positive: ' + str(green_count) + ' green, ' + str(red_count) + ' concern(s): ' + '; '.join(red) + '.'
     else:
-        rec = 'WAIT'
-        reason = 'Insufficient signals (' + str(green_count) + ' green, ' + str(red_count) + ' red). Wait for stronger confirmation.'
+        rec = 'AVOID'
+        reason = 'Insufficient positive signals (' + str(green_count) + ' green, ' + str(red_count) + ' red).'
 
     return green, red, rec, reason, headlines
 
@@ -737,7 +755,6 @@ def screen(tickers, market, wl_history):
 # ================================================================
 def build_html(flagged, date_str, market_colour, portfolio_pnl, wl_history):
     buy   = [s for s in flagged if s['rec'] == 'BUY']
-    wait  = [s for s in flagged if s['rec'] == 'WAIT']
     avoid = [s for s in flagged if s['rec'] == 'AVOID']
 
     # Sector concentration
@@ -861,9 +878,8 @@ def build_html(flagged, date_str, market_colour, portfolio_pnl, wl_history):
     legend = (
         '<div style="background:#f9f9f9;border:1px solid #ddd;border-radius:6px;padding:12px;margin-bottom:20px;font-size:12px">'
         '<b>How to read:</b> '
-        '<span style="color:#1b5e20;font-weight:bold">BUY</span> = strong fundamentals + sanity checks pass. '
-        '<span style="color:#e65100;font-weight:bold">WAIT</span> = good fundamentals but some concerns. '
-        '<span style="color:#b71c1c;font-weight:bold">AVOID</span> = multiple red flags. '
+        '<span style="color:#1b5e20;font-weight:bold">BUY</span> = strong fundamentals + good entry point (not extended, analyst upside exists). '
+        'Stocks that pass fundamentals but are overextended or have red flags are excluded. '
         '<b>NEW</b> badge = first time appearing. '
         'Graham value = estimated intrinsic value (Graham Number formula). '
         '<b>Buckets:</b> '
@@ -877,7 +893,7 @@ def build_html(flagged, date_str, market_colour, portfolio_pnl, wl_history):
     summary = ('Screened ' + str(len(US_STOCKS)) + ' US + ' + str(len(HK_STOCKS)) + ' HK + ' +
                str(len(SG_STOCKS)) + ' SG = ' + str(len(US_STOCKS)+len(HK_STOCKS)+len(SG_STOCKS)) +
                ' stocks. ' + str(len(flagged)) + ' passed value criteria. | '
-               'BUY: <b>' + str(len(buy)) + '</b> | WAIT: <b>' + str(len(wait)) + '</b> | AVOID: <b>' + str(len(avoid)) + '</b>')
+               'BUY: <b>' + str(len(buy)) + '</b> | AVOID (not shown): <b>' + str(len(avoid)) + '</b>')
 
     return (
         '<html><body style="font-family:Arial,sans-serif;color:#333;max-width:1100px;margin:auto;padding:20px">'
@@ -885,8 +901,6 @@ def build_html(flagged, date_str, market_colour, portfolio_pnl, wl_history):
         '<p style="background:#e8eaf6;padding:12px;border-radius:4px">' + summary + '</p>'
         + dip_banner + mc_html + legend + pnl_html + sector_warning +
         '<h3 style="color:#1b5e20">BUY - ' + str(len(buy)) + ' stocks</h3>' + section(buy, 'BUY', '#1b5e20') +
-        '<h3 style="color:#e65100">WAIT - ' + str(len(wait)) + ' stocks</h3>' + section(wait, 'WAIT', '#e65100') +
-        '<h3 style="color:#b71c1c">AVOID - ' + str(len(avoid)) + ' stocks</h3>' + section(avoid, 'AVOID', '#b71c1c') +
         '<br><p style="font-size:11px;color:#999">For informational purposes only. Not financial advice. Data from Yahoo Finance.</p>'
         '</body></html>'
     )
