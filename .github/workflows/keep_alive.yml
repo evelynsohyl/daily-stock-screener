@@ -1,0 +1,21 @@
+name: Keep Alive
+
+on:
+  schedule:
+    - cron: "0 0 * * 0"
+  workflow_dispatch:
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Keep repo active
+        run: |
+          git config user.email "github-actions@github.com"
+          git config user.name "GitHub Actions"
+          echo "$(date -u)" > .last_active
+          git add .last_active
+          git commit -m "chore: keep alive $(date -u +%Y-%m-%d)" || echo "Nothing to commit"
+          git push || echo "Nothing to push"
