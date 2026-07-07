@@ -401,25 +401,45 @@ def get_news_sentiment(ticker_obj):
         news = ticker_obj.news
         if not news:
             return [], 'neutral'
-        headlines = []
+        # Get ticker symbol and company name for relevance filtering
+        ticker_sym = (ticker_obj.ticker or '').upper().replace('.HK','').replace('.SI','')
+        try:
+            company_name = (ticker_obj.info.get('shortName') or ticker_obj.info.get('longName') or '').lower()
+            # Extract first meaningful word from company name (e.g. 'visa' from 'Visa Inc.')
+            company_keywords = [w for w in company_name.replace(',','').replace('.','').split() if len(w) > 3 and w not in ('inc','corp','ltd','group','holdings','limited','company')]
+        except:
+            company_keywords = []
         neg_words = ['downgrade','cut','miss','loss','decline','fall','drop','warn','risk',
                      'lawsuit','fraud','recall','investigation','layoff','bankruptcy','default']
         pos_words = ['upgrade','beat','record','growth','profit','raise','expand','strong',
                      'buy','outperform','dividend','acquisition','partnership']
+        headlines = []
         neg_count = 0
         pos_count = 0
-        for item in news[:5]:
-            # yfinance new structure: title nested under item['content']['title']
+        for item in news[:10]:  # Check more items to find relevant ones
             content = item.get('content', {})
             title = (content.get('title', '') if isinstance(content, dict) else '') or item.get('title', '')
             if not title:
                 continue
-            headlines.append(title)
             title_lower = title.lower()
+            # Check if headline is relevant to this company
+            related_tickers = content.get('relatedTickers', []) if isinstance(content, dict) else []
+            is_relevant = (
+                ticker_sym.lower() in title_lower or
+                any(kw in title_lower for kw in company_keywords) or
+                ticker_sym in [str(t).upper() for t in related_tickers]
+            )
+            if not is_relevant:
+                continue
+            headlines.append(title)
             if any(w in title_lower for w in neg_words):
                 neg_count += 1
             if any(w in title_lower for w in pos_words):
                 pos_count += 1
+            if len(headlines) >= 3:
+                break
+        if not headlines:
+            return ['No company-specific news found today.'], 'neutral'
         if neg_count >= 2:
             sentiment = 'negative'
         elif pos_count >= 2:
