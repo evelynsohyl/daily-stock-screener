@@ -242,26 +242,60 @@ def get_market_colour():
 # ================================================================
 def get_mini_chart(ticker):
     try:
-        hist = yf.Ticker(ticker).history(period='6mo')
-        if hist is None or len(hist) < 20:
+        t_obj = yf.Ticker(ticker)
+        # Fetch 3 timeframes
+        hist_5y  = t_obj.history(period='5y',  interval='1mo')
+        hist_1y  = t_obj.history(period='1y',  interval='1wk')
+        hist_3mo = t_obj.history(period='3mo', interval='1d')
+        if hist_5y is None or len(hist_5y) < 6:
             return None
-        fig, ax = plt.subplots(figsize=(4, 1.5))
+
+        panels = [
+            (hist_5y,  '5Y (Monthly)'),
+            (hist_1y,  '1Y (Weekly)'),
+            (hist_3mo, '3M (Daily)'),
+        ]
+
+        fig, axes = plt.subplots(1, 3, figsize=(10, 2.2))
         fig.patch.set_facecolor('#f9f9f9')
-        ax.set_facecolor('#f9f9f9')
-        close = hist['Close']
-        color = '#2e7d32' if float(close.iloc[-1]) >= float(close.iloc[0]) else '#c62828'
-        ax.plot(hist.index, close, color=color, linewidth=1.5)
-        ax.fill_between(hist.index, close, float(close.min()), alpha=0.1, color=color)
-        ax.set_xticks([])
-        ax.set_yticks([])
-        for spine in ax.spines.values():
-            spine.set_visible(False)
+
+        for ax, (hist, label) in zip(axes, panels):
+            ax.set_facecolor('#f9f9f9')
+            if hist is None or len(hist) < 3:
+                ax.text(0.5, 0.5, 'N/A', ha='center', va='center',
+                        transform=ax.transAxes, fontsize=9, color='#aaa')
+                ax.set_title(label, fontsize=8, color='#555', pad=3)
+                ax.set_xticks([])
+                ax.set_yticks([])
+                for spine in ax.spines.values():
+                    spine.set_visible(False)
+                continue
+            close = hist['Close']
+            color = '#2e7d32' if float(close.iloc[-1]) >= float(close.iloc[0]) else '#c62828'
+            ax.plot(hist.index, close, color=color, linewidth=1.5)
+            ax.fill_between(hist.index, close, float(close.min()), alpha=0.08, color=color)
+            # Add 50-period MA on 5Y and 1Y panels
+            if len(close) >= 10:
+                ma = close.rolling(min(50, len(close)//2)).mean()
+                ax.plot(hist.index, ma, color='#1565c0', linewidth=0.8, linestyle='--', alpha=0.7)
+            # Label current price on right
+            ax.annotate(str(round(float(close.iloc[-1]), 1)),
+                        xy=(hist.index[-1], float(close.iloc[-1])),
+                        fontsize=7, color=color, ha='right')
+            ax.set_title(label, fontsize=8, color='#555', pad=3)
+            ax.set_xticks([])
+            ax.set_yticks([])
+            for spine in ax.spines.values():
+                spine.set_visible(False)
+
+        plt.tight_layout(pad=0.3)
         buf = BytesIO()
-        plt.savefig(buf, format='png', dpi=80, bbox_inches='tight', pad_inches=0.05)
+        plt.savefig(buf, format='png', dpi=90, bbox_inches='tight', pad_inches=0.05)
         plt.close(fig)
         buf.seek(0)
         return base64.b64encode(buf.read()).decode('utf-8')
-    except:
+    except Exception as e:
+        print('Chart error ' + ticker + ': ' + str(e))
         return None
 
 # ================================================================
