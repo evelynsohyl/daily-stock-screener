@@ -24,7 +24,6 @@ warnings.filterwarnings('ignore')
 SENDER_EMAIL        = 'evelynsohyl@gmail.com'
 SENDER_APP_PASSWORD = 'sjef izzp kvbk htay'
 RECIPIENT_EMAIL     = 'evelynsohyl@gmail.com'
-MIN_SCORE           = 5
 WATCHLIST_FILE      = 'watchlist_history.json'
 PORTFOLIO_FILE      = 'portfolio.json'
 
@@ -123,12 +122,14 @@ MIN_SCORE_REIT     = 4  # out of 7
 def classify_bucket(stock, market):
     """Classify a stock into Growth / Value / Dividend / REIT bucket."""
     sector       = (stock.get('sector') or '').lower()
-    eps_growth   = stock.get('earnings_growth') or 0
+    # Use None-safe values: only treat as growth if data actually exists
+    eps_growth   = stock.get('earnings_growth')  # may be None
     rev_growth   = stock.get('revenue_growth') or 0
     div_yield    = stock.get('dividend_yield') or 0
     is_reit      = 'real estate' in sector
     is_hksg      = market in ('HK', 'SG')
-    is_growth    = (eps_growth >= 20 or rev_growth >= 20)
+    # Only flag as growth if we have real EPS growth data confirming it
+    is_growth    = ((eps_growth is not None and eps_growth >= 20) or rev_growth >= 20)
 
     if is_reit and is_hksg:
         return 'REIT', CRITERIA_REIT, MIN_SCORE_REIT
@@ -531,17 +532,22 @@ def score_stock(stock, criteria):
 # ================================================================
 def get_trend(ticker_obj):
     try:
+        # Fetch 1 year of daily data for proper MA calculation
         hist = ticker_obj.history(period='1y')
         if hist is None or len(hist) < 50:
             return 'unknown', 0.0
         close = hist['Close']
-        ma50  = float(close.tail(50).mean())
-        ma200 = float(close.mean())
+        # True rolling MAs - last value of the rolling window
+        ma50  = float(close.rolling(50).mean().iloc[-1])
+        ma200 = float(close.rolling(min(200, len(close))).mean().iloc[-1])
         current = float(close.iloc[-1])
-        pct_from_52w_low = ((current - float(close.min())) / float(close.min())) * 100
-        if ma50 > ma200:
+        # 52-week high/low from full year
+        week52_low  = float(close.min())
+        week52_high = float(close.max())
+        pct_from_52w_low = ((current - week52_low) / week52_low) * 100
+        if ma50 > ma200 * 1.01:
             trend = 'uptrend'
-        elif ma50 < ma200 * 0.97:
+        elif ma50 < ma200 * 0.99:
             trend = 'downtrend'
         else:
             trend = 'sideways'
@@ -610,8 +616,11 @@ def sanity_checks(stock):
     elif 0.5 <= beta <= 1.5:
         green.append('Stable beta: ' + str(round(beta, 2)))
 
+    # Graham value only meaningful for Value/Dividend/REIT buckets, not Growth
+    # (Growth stocks are intentionally priced above Graham value due to future earnings)
+    bucket = stock.get('_bucket', 'Value')
     graham = stock.get('graham_value')
-    if graham and current and current > 0:
+    if graham and current and current > 0 and bucket not in ('Growth',):
         margin_of_safety = (graham - current) / current * 100
         if margin_of_safety >= 20:
             green.append('Graham value: ' + str(graham) + ' (+' + str(round(margin_of_safety, 1)) + '% margin of safety)')
@@ -624,10 +633,13 @@ def sanity_checks(stock):
     elif sentiment == 'positive':
         green.append('Recent news: positive sentiment')
 
+    market = stock.get('_market', '')
     events = get_upcoming_events(stock.get('ticker_obj'))
     for ev in events:
         if 'Earnings' in ev:
             red.append(ev)
+        elif 'dividend' in ev.lower() and market == 'US':
+            pass  # Skip ex-dividend alerts for US stocks (30% withholding tax makes this irrelevant)
         else:
             green.append(ev)
 
@@ -636,19 +648,19 @@ def sanity_checks(stock):
 
     if red_count == 0 and green_count >= 4:
         rec = 'BUY'
-        reason = 'Strong fundamentals, no red flags, multiple positive signals.'
+        reason = 'Strong fundamentals, no red flags, ' + str(green_count) + ' positive signals.'
     elif red_count >= 3:
         rec = 'AVOID'
-        reason = 'Red flags: ' + '; '.join(red[:3]) + '.'
+        reason = str(red_count) + ' red flags: ' + '; '.join(red) + '.'
     elif red_count >= 1 and green_count >= red_count:
         rec = 'WAIT'
-        reason = 'Concern: ' + '; '.join(red) + '.'
+        reason = 'Concern (' + str(red_count) + ' flag' + ('s' if red_count > 1 else '') + '): ' + '; '.join(red) + '.'
     elif red_count == 0 and green_count >= 2:
         rec = 'BUY'
-        reason = 'Good fundamentals with positive signals.'
+        reason = 'Good fundamentals, ' + str(green_count) + ' positive signals, no red flags.'
     else:
         rec = 'WAIT'
-        reason = 'Limited positive signals (' + str(green_count) + ' green, ' + str(red_count) + ' red). Wait for stronger confirmation.'
+        reason = 'Insufficient signals (' + str(green_count) + ' green, ' + str(red_count) + ' red). Wait for stronger confirmation.'
 
     return green, red, rec, reason, headlines
 
@@ -665,6 +677,9 @@ def screen(tickers, market, wl_history):
             time.sleep(0.5)
             continue
         bucket, criteria, min_sc = classify_bucket(stock, market)
+        # Inject bucket and market into stock dict for use in sanity_checks
+        stock['_bucket'] = bucket
+        stock['_market'] = market
         sc, passed, failed = score_stock(stock, criteria)
         if sc >= min_sc:
             green, red, rec, reason, headlines = sanity_checks(stock)
@@ -732,7 +747,8 @@ def build_html(flagged, date_str, market_colour, portfolio_pnl, wl_history):
                           str(round(s['price'], 2)) + ' | Analyst target: ' + str(round(s['target'], 2)) +
                           ' | Upside: ' + str(round(upside, 1)) + '%</div>')
         graham_line = ''
-        if s['graham'] and s['price'] and s['price'] > 0:
+        # Graham value is only meaningful for Value/Dividend/REIT - hide for Growth stocks
+        if s['graham'] and s['price'] and s['price'] > 0 and s.get('bucket') != 'Growth':
             mos = (s['graham'] - s['price']) / s['price'] * 100
             mos_color = '#2e7d32' if mos >= 0 else '#c62828'
             graham_line = ('<div style="font-size:12px;color:' + mos_color + ';margin-top:2px">Graham value: ' +
@@ -740,7 +756,7 @@ def build_html(flagged, date_str, market_colour, portfolio_pnl, wl_history):
         chart_img = ''
         if s['chart']:
             cid = 'chart_' + s['ticker'].replace('.', '_').replace('-', '_')
-            chart_img = '<img src="cid:' + cid + '" style="width:200px;height:75px;margin-top:6px;border-radius:4px">'
+            chart_img = '<img src="cid:' + cid + '" style="width:480px;height:100px;margin-top:6px;border-radius:4px">'
         passed_html = ''.join(['<span style="color:#2e7d32;font-size:11px;display:block">+ ' + p + '</span>' for p in s['passed']])
         failed_html = ''.join(['<span style="color:#bbb;font-size:11px;display:block">- ' + f + '</span>' for f in s['failed']])
         green_html  = ''.join(['<span style="color:#2e7d32;font-size:11px;display:block">&#10003; ' + g + '</span>' for g in s['green']])
