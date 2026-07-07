@@ -681,24 +681,23 @@ def sanity_checks(stock):
             entry_ok = False
             entry_reason = 'Analyst target offers <5% upside (' + str(round(upside2,1)) + '%) - limited reward'
 
-    if red_count >= 3:
-        rec = 'AVOID'
-        reason = str(red_count) + ' red flags: ' + '; '.join(red) + '.'
-    elif not entry_ok:
+    # Strict BUY criteria: zero red flags + good entry + minimum green signals
+    # Any red flag or poor entry = excluded (AVOID)
+    if not entry_ok:
         rec = 'AVOID'
         reason = 'Entry not ideal: ' + entry_reason + '.'
-    elif red_count == 0 and green_count >= 4:
+    elif red_count >= 1:
+        rec = 'AVOID'
+        reason = str(red_count) + ' red flag(s): ' + '; '.join(red) + '.'
+    elif green_count >= 5:
         rec = 'BUY'
-        reason = 'Strong fundamentals, no red flags, ' + str(green_count) + ' positive signals.'
-    elif red_count == 0 and green_count >= 2:
+        reason = 'Strong fundamentals, clean entry, ' + str(green_count) + ' positive signals.'
+    elif green_count >= 3:
         rec = 'BUY'
-        reason = 'Good fundamentals, ' + str(green_count) + ' positive signals, no red flags.'
-    elif red_count >= 1 and green_count > red_count:
-        rec = 'BUY'
-        reason = 'Mostly positive: ' + str(green_count) + ' green, ' + str(red_count) + ' concern(s): ' + '; '.join(red) + '.'
+        reason = 'Good fundamentals, clean entry, ' + str(green_count) + ' positive signals.'
     else:
         rec = 'AVOID'
-        reason = 'Insufficient positive signals (' + str(green_count) + ' green, ' + str(red_count) + ' red).'
+        reason = 'Insufficient positive signals (' + str(green_count) + ' green). Needs stronger confirmation.'
 
     return green, red, rec, reason, headlines
 
