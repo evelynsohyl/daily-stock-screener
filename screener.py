@@ -482,6 +482,47 @@ def get_upcoming_events(ticker_obj):
         pass
     return events
 
+def _safe_pfcf(info):
+    """Calculate Price-to-Free-Cash-Flow from Yahoo Finance fields."""
+    try:
+        mc  = info.get('marketCap')
+        fcf = info.get('freeCashflow')
+        if mc and fcf and fcf > 0:
+            return round(mc / fcf, 1)
+    except:
+        pass
+    return None
+
+def _get_rsi(ticker_obj, period=14):
+    """Calculate 14-day RSI from recent daily price history."""
+    try:
+        hist = ticker_obj.history(period='3mo')
+        if hist is None or len(hist) < period + 1:
+            return None
+        close = hist['Close']
+        delta = close.diff()
+        gain  = delta.clip(lower=0).rolling(period).mean()
+        loss  = (-delta.clip(upper=0)).rolling(period).mean()
+        rs    = gain / loss
+        rsi   = 100 - (100 / (1 + rs))
+        return round(float(rsi.iloc[-1]), 1)
+    except:
+        return None
+
+def _get_volume_ratio(ticker_obj):
+    """Return ratio of last-day volume vs 20-day average volume."""
+    try:
+        hist = ticker_obj.history(period='1mo')
+        if hist is None or len(hist) < 5:
+            return None
+        avg_vol  = float(hist['Volume'].iloc[:-1].tail(20).mean())
+        last_vol = float(hist['Volume'].iloc[-1])
+        if avg_vol > 0:
+            return round(last_vol / avg_vol, 2)
+    except:
+        pass
+    return None
+
 # ================================================================
 # FETCH STOCK DATA
 # ================================================================
@@ -515,12 +556,15 @@ def fetch_stock(ticker):
             'gross_margins':   (gm * 100) if gm else None,
             'payout_ratio':    (pr * 100) if pr else None,
             'peg_ratio':       peg,
-            'insider_pct':     (info.get('heldPercentInsiders') or 0) * 100,
-            'short_ratio':     info.get('shortRatio'),
-            'beta':            info.get('beta'),
-            'graham_value':    dcf_fair_value(info),
-            'info':            info,
-            'ticker_obj':      t,
+            'insider_pct':        (info.get('heldPercentInsiders') or 0) * 100,
+            'inst_pct':           (info.get('heldPercentInstitutions') or 0) * 100,
+            'short_ratio':        info.get('shortRatio'),
+            'beta':               info.get('beta'),
+            'graham_value':       dcf_fair_value(info),
+            'price_to_fcf':       _safe_pfcf(info),
+            'roic':               (info.get('returnOnAssets') or 0) * 100,
+            'info':               info,
+            'ticker_obj':         t,
         }
     except Exception as e:
         print('Error ' + ticker + ': ' + str(e))
@@ -646,6 +690,48 @@ def sanity_checks(stock):
             green.append('Graham value: ' + str(graham) + ' (+' + str(round(margin_of_safety, 1)) + '% margin of safety)')
         elif margin_of_safety < -20:
             red.append('Trading above Graham value by ' + str(round(-margin_of_safety, 1)) + '%')
+
+    # P/FCF check
+    pfcf = stock.get('price_to_fcf')
+    bucket = stock.get('_bucket', 'Value')
+    if pfcf:
+        pfcf_limit = 30 if bucket == 'Growth' else 20
+        if pfcf <= pfcf_limit:
+            green.append('P/FCF: ' + str(pfcf) + ' (< ' + str(pfcf_limit) + ' - good cash generation)')
+        elif pfcf > pfcf_limit * 2:
+            red.append('P/FCF: ' + str(pfcf) + ' (very expensive vs cash flow)')
+
+    # RSI check
+    rsi = _get_rsi(stock.get('ticker_obj'))
+    if rsi is not None:
+        if 30 <= rsi <= 55:
+            green.append('RSI: ' + str(rsi) + ' (healthy entry zone 30-55)')
+        elif rsi > 70:
+            red.append('RSI: ' + str(rsi) + ' (overbought > 70)')
+        elif rsi < 25:
+            red.append('RSI: ' + str(rsi) + ' (in freefall < 25)')
+
+    # Institutional ownership
+    inst = stock.get('inst_pct') or 0
+    if inst >= 30:
+        green.append('Institutional ownership: ' + str(round(inst, 1)) + '%')
+    elif inst < 10:
+        red.append('Low institutional ownership: ' + str(round(inst, 1)) + '%')
+
+    # ROIC (using ROA as proxy)
+    roic = stock.get('roic') or 0
+    if roic >= 10:
+        green.append('ROIC (ROA proxy): ' + str(round(roic, 1)) + '% (capital efficient)')
+    elif roic < 0:
+        red.append('Negative ROIC: ' + str(round(roic, 1)) + '%')
+
+    # Volume confirmation
+    vol_ratio = _get_volume_ratio(stock.get('ticker_obj'))
+    if vol_ratio is not None:
+        if vol_ratio >= 1.2:
+            green.append('Volume: ' + str(vol_ratio) + 'x avg (above-average interest)')
+        elif vol_ratio < 0.3:
+            red.append('Volume: ' + str(vol_ratio) + 'x avg (very low liquidity)')
 
     headlines, sentiment = get_news_sentiment(stock.get('ticker_obj'))
     if sentiment == 'negative':
