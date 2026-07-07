@@ -599,7 +599,7 @@ def get_trend(ticker_obj):
         # Fetch 1 year of daily data for proper MA calculation
         hist = ticker_obj.history(period='1y')
         if hist is None or len(hist) < 50:
-            return 'unknown', 0.0
+            return 'unknown', 0.0, 0.0
         close = hist['Close']
         # True rolling MAs - last value of the rolling window
         ma50  = float(close.rolling(50).mean().iloc[-1])
@@ -607,17 +607,18 @@ def get_trend(ticker_obj):
         current = float(close.iloc[-1])
         # 52-week high/low from full year
         week52_low  = float(close.min())
-        week52_high = float(close.max())
         pct_from_52w_low = ((current - week52_low) / week52_low) * 100
+        # How far price is above the 200MA (as a %)
+        pct_above_200ma = ((current - ma200) / ma200) * 100 if ma200 > 0 else 0.0
         if ma50 > ma200 * 1.01:
             trend = 'uptrend'
         elif ma50 < ma200 * 0.99:
             trend = 'downtrend'
         else:
             trend = 'sideways'
-        return trend, round(pct_from_52w_low, 1)
+        return trend, round(pct_from_52w_low, 1), round(pct_above_200ma, 1)
     except:
-        return 'unknown', 0.0
+        return 'unknown', 0.0, 0.0
 
 # ================================================================
 # SANITY CHECKS
@@ -641,7 +642,7 @@ def sanity_checks(stock):
         elif upside < 0:
             red.append('Above analyst target by ' + str(round(-upside, 1)) + '%')
 
-    trend, pct_52w = get_trend(stock.get('ticker_obj'))
+    trend, pct_52w, pct_above_200ma = get_trend(stock.get('ticker_obj'))
     if trend == 'uptrend':
         green.append('Trend: uptrend (50MA > 200MA)')
     elif trend == 'downtrend':
@@ -753,19 +754,25 @@ def sanity_checks(stock):
     red_count   = len(red)
 
     # Entry quality check: reject stocks that are overextended regardless of fundamentals
-    # A stock near its 52-week high with analyst target below current price is a poor entry
+    # Rules:
+    #   1. Stock must not have run up more than 60% from its 52-week low (not extended)
+    #   2. Price must not be more than 10% above the 200-day MA (not overextended)
+    #   3. Analyst target must offer at least 10% upside (meaningful reward)
     entry_ok = True
     entry_reason = ''
-    if pct_52w >= 85:
+    if pct_52w >= 60:
         entry_ok = False
-        entry_reason = 'Price near 52-week high (' + str(pct_52w) + '% above low) - wait for pullback'
+        entry_reason = 'Run up ' + str(pct_52w) + '% from 52w low - wait for better entry'
+    if entry_ok and pct_above_200ma > 10:
+        entry_ok = False
+        entry_reason = 'Price ' + str(pct_above_200ma) + '% above 200MA - extended, wait for pullback'
     current2 = stock.get('current_price')
     target2  = stock.get('target_price')
     if entry_ok and current2 and target2 and current2 > 0:
         upside2 = (target2 - current2) / current2 * 100
-        if upside2 < 5:
+        if upside2 < 10:
             entry_ok = False
-            entry_reason = 'Analyst target offers <5% upside (' + str(round(upside2,1)) + '%) - limited reward'
+            entry_reason = 'Analyst target offers only ' + str(round(upside2,1)) + '% upside - insufficient reward'
 
     # Strict BUY criteria: zero red flags + good entry + minimum green signals
     # Any red flag or poor entry = excluded (AVOID)
